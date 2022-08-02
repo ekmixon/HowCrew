@@ -36,7 +36,10 @@ def get_all_vpcs(region):
     client = boto3.client('ec2', region_name=region)
     account_id = get_account_id()
 
-    logger.debug("searching for VPCs in region {} for AWS account {}".format(region, account_id))
+    logger.debug(
+        f"searching for VPCs in region {region} for AWS account {account_id}"
+    )
+
     return client.describe_vpcs(Filters=[
         {
             'Name': 'owner-id',
@@ -75,7 +78,10 @@ def categorize_vpc_flow_log_status(region):
     all_flow_logs = client.describe_flow_logs()
     for flow_log in all_flow_logs['FlowLogs']:
         resource_id = flow_log['ResourceId']
-        if resource_id in vpc_id_dict.keys() and flow_log['FlowLogStatus'] == 'ACTIVE':
+        if (
+            resource_id in vpc_id_dict
+            and flow_log['FlowLogStatus'] == 'ACTIVE'
+        ):
             categorized_vpcs['flow_log_enabled'][resource_id] = vpc_id_dict[resource_id]
     for vpc_id, vpc_obj in vpc_id_dict.items():
         if vpc_id not in categorized_vpcs['flow_log_enabled'].keys():
@@ -124,7 +130,7 @@ def enable_flow_logs(bucket, vpc_ids):
     s3 = boto3.client("s3")
     create_flow_log_bucket(bucket, s3)
     vpcs = describe_vpcs_flow_log(print_table=False)
-    bucket_arn = 'arn:aws:s3:::{}'.format(bucket)
+    bucket_arn = f'arn:aws:s3:::{bucket}'
     flow_logs_cnt = 0
     for region in vpcs.keys():
         region_vpcs = vpcs[region]
@@ -146,7 +152,7 @@ def enable_flow_logs(bucket, vpc_ids):
                 else:
                     flow_logs_cnt += 1
     if flow_logs_cnt > 0:
-        logger.info("successfully created {} flow logs".format(flow_logs_cnt))
+        logger.info(f"successfully created {flow_logs_cnt} flow logs")
 
 
 def create_flow_log_bucket(bucket, s3):
@@ -165,13 +171,13 @@ def create_flow_log_bucket(bucket, s3):
                         'Days': 365,
                     },
                     'Prefix': '',
-                    'ID': bucket + '_lifecycle_conf',
-
+                    'ID': f'{bucket}_lifecycle_conf',
                     'Status': 'Enabled',
                 }
             ]
-        }
+        },
     )
+
 
     s3.put_public_access_block(Bucket=bucket,
                                PublicAccessBlockConfiguration={
@@ -213,7 +219,7 @@ def disable_flow_logs(vpc_ids):
                 else:
                     flow_logs_cnt += 1
     if flow_logs_cnt > 0:
-        logger.info("successfully disabled {} flow logs".format(flow_logs_cnt))
+        logger.info(f"successfully disabled {flow_logs_cnt} flow logs")
 
 
 if __name__ == '__main__':

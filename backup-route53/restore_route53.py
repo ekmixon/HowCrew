@@ -26,7 +26,7 @@ def restore_hosted_zone(zone_to_restore):
             HostedZoneConfig=zone_to_restore['Config']
         )['HostedZone']
 
-    print('Restored the zone {}'.format(zone_to_restore['Id']))
+    print(f"Restored the zone {zone_to_restore['Id']}")
     return restored_zone
 
 
@@ -37,8 +37,7 @@ def get_unique_caller_id(resource_id):
     :return: A unique string
     """
     timestamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", datetime.utcnow().utctimetuple())
-    unique_caller_reference = '{}-{}'.format(timestamp, resource_id)
-    return unique_caller_reference
+    return f'{timestamp}-{resource_id}'
 
 
 def create_zone_if_not_exist(zone_obj):
@@ -56,28 +55,39 @@ def get_s3_object_as_string(key):
 
 
 def handle(event, context):
-    if not event.get('BackupTime', False):
-        backup_time = get_s3_object_as_string('latest_backup_timestamp').decode()
-    else:
-        backup_time = event['BackupTime']
-    print('Restoring from backup taken at {}'.format(backup_time))
+    backup_time = (
+        event['BackupTime']
+        if event.get('BackupTime', False)
+        else get_s3_object_as_string('latest_backup_timestamp').decode()
+    )
 
-    zones = json.loads(get_s3_object_as_string('{}/zones.json'.format(backup_time)))
+    print(f'Restoring from backup taken at {backup_time}')
+
+    zones = json.loads(get_s3_object_as_string(f'{backup_time}/zones.json'))
     for zone_obj in zones:
         zone = create_zone_if_not_exist(zone_obj)
-        backup_zone_records = json.loads(get_s3_object_as_string('{}/{}.json'.format(backup_time, zone_obj['Name'])))
+        backup_zone_records = json.loads(
+            get_s3_object_as_string(f"{backup_time}/{zone_obj['Name']}.json")
+        )
+
         current_zone_records = route53_utils.get_route53_zone_records(zone['Id'])
 
         records_to_upsert = list(filter(lambda x: x not in current_zone_records, backup_zone_records))
-        changes_list = list(map(lambda x: {"Action": "UPSERT", "ResourceRecordSet": x}, records_to_upsert))
-
-        if len(changes_list) > 0:
+        if changes_list := list(
+            map(
+                lambda x: {"Action": "UPSERT", "ResourceRecordSet": x},
+                records_to_upsert,
+            )
+        ):
             route53.change_resource_record_sets(
                 HostedZoneId=zone['Id'],
                 ChangeBatch={'Comment': 'Restored by HowCrew\'s route53 backup module', 'Changes': changes_list}
             )
 
-    backup_health_checks = json.loads(get_s3_object_as_string('{}/Health checks.json'.format(backup_time)))
+    backup_health_checks = json.loads(
+        get_s3_object_as_string(f'{backup_time}/Health checks.json')
+    )
+
     current_health_checks = route53_utils.get_route53_health_checks()
 
     # Compare the health checks by their IDs, actual objects are a little different
@@ -91,4 +101,4 @@ def handle(event, context):
 
         if len(health_check_to_create.get('Tags', [])) > 0:
             route53.change_tags_for_resource(ResourceType='healthcheck', ResourceId=created['Id'], AddTags=health_check_to_create['Tags'])
-    return 'Restored backup from {}'.format(backup_time)
+    return f'Restored backup from {backup_time}'

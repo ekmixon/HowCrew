@@ -14,7 +14,7 @@ route53 = boto3.client('route53')
 def create_bucket_if_not_exist(region):
     try:
         s3.head_bucket(Bucket=bucket_name)
-        print('Bucket "{}" already exists'.format(bucket_name))
+        print(f'Bucket "{bucket_name}" already exists')
     except ClientError as e:
         if e.response['Error']['Code'] == '404':
             if region == 'us-east-1':
@@ -51,7 +51,9 @@ def create_bucket_if_not_exist(region):
                                                                       "\"Principal\":\"*\"}]} "
             )
 
-            print('Created the bucket "{}" with SSL verification, versioning and SSE enabled'.format(bucket_name))
+            print(
+                f'Created the bucket "{bucket_name}" with SSL verification, versioning and SSE enabled'
+            )
 
 
 def get_route53_hosted_zones(next_dns_name=None, next_hosted_zone_id=None):
@@ -75,19 +77,34 @@ def handle(event, context):
     create_bucket_if_not_exist(context.invoked_function_arn.split(":")[3])
 
     hosted_zones = get_route53_hosted_zones()
-    s3.put_object(Body=json.dumps(hosted_zones).encode(), Bucket=bucket_name, Key='{}/zones.json'.format(timestamp))
+    s3.put_object(
+        Body=json.dumps(hosted_zones).encode(),
+        Bucket=bucket_name,
+        Key=f'{timestamp}/zones.json',
+    )
+
 
     for zone in hosted_zones:
         zone_records = route53_utils.get_route53_zone_records(zone['Id'])
-        s3.put_object(Body=json.dumps(zone_records).encode(), Bucket=bucket_name, Key="{}/{}.json".format(timestamp, zone['Name']))
+        s3.put_object(
+            Body=json.dumps(zone_records).encode(),
+            Bucket=bucket_name,
+            Key=f"{timestamp}/{zone['Name']}.json",
+        )
+
 
     health_checks = route53_utils.get_route53_health_checks()
     for health_check in health_checks:
         tags = route53.list_tags_for_resource(ResourceType='healthcheck', ResourceId=health_check['Id'])['ResourceTagSet']['Tags']
         health_check['Tags'] = tags
 
-    s3.put_object(Body=json.dumps(health_checks).encode(), Bucket=bucket_name, Key="{}/Health checks.json".format(timestamp))
+    s3.put_object(
+        Body=json.dumps(health_checks).encode(),
+        Bucket=bucket_name,
+        Key=f"{timestamp}/Health checks.json",
+    )
+
 
     s3.put_object(Body=timestamp.encode(), Bucket=bucket_name, Key="latest_backup_timestamp")
 
-    return "Success: {} zones backed up and {} health checks backed up at {}".format(len(hosted_zones), len(health_checks), timestamp)
+    return f"Success: {len(hosted_zones)} zones backed up and {len(health_checks)} health checks backed up at {timestamp}"
